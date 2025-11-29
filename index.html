@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>AlgCubing Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              gray: {
+                750: '#2d3748',
+                850: '#1a202c',
+                900: '#111827',
+                950: '#030712', 
+              },
+              accent: {
+                500: '#6366f1', // Indigo
+                600: '#4f46e5',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body { background-color: #030712; color: #f3f4f6; overflow: hidden; }
+      /* Dynamic Viewport Height for Mobile */
+      body, #root { height: 100vh; height: 100dvh; }
+      
+      /* Modern Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+      
+      .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #374151 transparent;
+      }
+
+      /* Twisty Player Customization */
+      twisty-player {
+        width: 100%;
+        height: 100%;
+        /* Use standard display to avoid layout collapse */
+        --twisty-player-height: 100%;
+        --twisty-player-width: 100%;
+      }
+      
+      /* Hide native twisty background to allow our gradients to show through */
+      twisty-player::part(fullscreen-button) { display: none; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "cubing/alg": "https://cdn.cubing.net/v0/js/cubing/alg",
+    "cubing/twisty": "https://cdn.cubing.net/v0/js/cubing/twisty"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef, useMemo } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { GoogleGenAI, Type, Modality } from '@google/genai';
+      import { 
+        Loader2, Sparkles, AlertCircle, Bot, Lightbulb, ArrowRight, Crosshair, 
+        Play, Mic, StopCircle, Wifi, WifiOff, Copy, Check, RotateCcw, Settings, 
+        Search, Box, BrainCircuit, ChevronLeft, Grid3X3, Layers, Zap, Star, 
+        Plus, Trash2, Save, X, Eye, EyeOff, Shuffle, HelpCircle, GraduationCap, Trophy 
+      } from 'lucide-react';
+      import "cubing/twisty";
+      import { Alg } from "cubing/alg";
+
+      // --- DATA: CFOP Algorithms ---
+      const CFOP_ALGORITHMS = [
+        // --- PLL ---
+        { 
+            id: 'H', 
+            name: 'H Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "M2' U M2' U2 M2' U M2'",
+            "M2' U' M2' U2' M2' U' M2'",
+            "M2' U2 M2' U M2' U2 M2'",
+            "M2' U2 M2' U' M2' U' M2'",
+            "R' U' R U' R U R U' R' U R U R2 U' R'"
+            ] 
+        },
+        { 
+            id: 'Ua', 
+            name: 'U Permutation : a', 
+            stage: 'PLL', 
+            algs: [
+            "R U R' U R' U' R2 U' R' U R' U R",
+            "(U2) M2' U M U2 M' U M2'",
+            "(U2) R U' R U R U R U' R' U' R2"
+            ] 
+        },
+        { 
+            id: 'Ub', 
+            name: 'U Permutation : b', 
+            stage: 'PLL', 
+            algs: [
+            "R' U R' U' R3 U' R' U R U R2",
+            "(U2) M2 U' M U2 M' U' M2",
+            "(U2) R2' U R U R' U' R3 U' R' U R'"
+            ] 
+        },
+        { 
+            id: 'Z', 
+            name: 'Z Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(U) M' U M2' U M2' U M' U2 M2'",
+            "M2' U M2' U M' U2 M2' U2 M'",
+            "M2' U2 M U M2' U M2' U M",
+            "R' U' R U' R U R U' R' U R U R2 U' R'"
+            ] 
+        },
+        { 
+            id: 'Aa', 
+            name: 'Aa Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(U') x R' U R' D2 R U' R' D2 R2 x'",
+            "x' R2 D2 R' U' R D2 R' U R' x",
+            "(U2) x L2 D2' L' U' L D2' L' U L' x'",
+            "(U) R' D R U' R' D' R U' R' D R U2 R' D' R"
+            ] 
+        },
+        { 
+            id: 'Ab', 
+            name: 'Ab Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(U') x R2' D2 R U R' D2 R U' R x'",
+            "x' R U' R D2 R' U R D2 R2' x",
+            "(U2) x L U' L D2' L' U L D2' L2' x'",
+            "(U) R' D R U2 R' D' R U R' D R U R' D' R"
+            ] 
+        },
+        { 
+            id: 'E', 
+            name: 'E Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(U) x' R U' R' D R U R' D' R U R' D R U' R' D' x",
+            "R' D' R U' R' D R U R' D' R U2 R' D R U' R' D' R U R' D R"
+            ] 
+        },
+        { 
+            id: 'F', 
+            name: 'F Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "y L R2 U R U R2 U' R' U' R2 U' R U2 L' U R'",
+            "(y) R' U' F' (R U R' U') R' F R2 (U' R' U') R U R' U R",
+            "(y x) R' B' U' l U R' U' R' F R2 U' R' U' R U R' U R",
+            "y2 R' U2 R' d' R' F' R2 U' R' U R' F R U' F",
+            "R' U R U' R2 F' U' F U R F R' F' R2 U'",
+            "M' U2 L F' R U2 r' U r' R2 U2 R2",
+            "(R' U R U') R2 (F' U' F U) (R F R' F') R2 U'",
+            "(y) R2 (F R F' R') (U' F' U F) R2 (U R' U' R) U",
+            "y2 R U' R' U R U F R U R' U' x' D' R2 D R D'",
+            "y2 R U' R' U R U F R U R' U' x U' R2 U R U'",
+            "R' U R U' R2 (y') R' U' R U (y x) R U R' U' R2 (x')",
+            "(y2) R' U2 R' d' R' F' R2 U' R' U R' F R U' F",
+            "(y') F r2 R' U2 r U' r' U2 (x') R2 U' R' U r2 u' (z')",
+            "B' U' R' B U B' U' B' R B2 U' B' U' B U B' U B",
+            "(y) R' U' F' R U R' U' R' F R2 U' R' U' R U R' U R",
+            "L U' L' U L2 F U F' U' L' F' L F L2 U",
+            "(y2) R U' R' U R2 (y) R U R' U' (x) U' R' U R U2 (x')",
+            "(y' z) R U R' U' R U2 (z' y') R U R' U' (y' x') R' U' R U R2 (x)",
+            "L F R' F' L' F' D2 B' L' B D2 F' R F2"
+            ] 
+        },
+        { 
+            id: 'Ga', 
+            name: 'Ga Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(y) R2 U (R' U R' U') R U' R2 (D U' R' U) R D'",
+            "(y) R2' u (R' U R' U' R) u' R2 (y') R' U R",
+            "(y) R2 U (R' U R' U' R) U' R2 D (U' R' U R) D'",
+            "(y2) F2' D (R' U R' U' R) D' F2 L' U L",
+            "R L U2 R' L' (y') R' U L' U2 R U' L",
+            "R U2' R' U' F' R U R2 U' R' F R U R2 U2' R'",
+            "(R U R' U' R') U F (R U R U' R') F' U R' U2 R",
+            "(y2 z) U R U' R' U' R B U R U R' U' B' R U' R2 U (z' y2')",
+            "(y) L F2 R (F' L' F U) R' U' (F' L F' L')",
+            "(y) R2' S2 U l2' U' l2' u R2 U' r2' F2"
+            ] 
+        },
+        { 
+            id: 'Gb', 
+            name: 'Gb Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "R' U' R U D' R2 U R' U R U' R U' R2 D",
+            "R' U' R (y) R2 u (R' U R U' R) u' R2",
+            "(y) F' U' F R2 u (R' U R U' R) u' R2'",
+            "(y2) R' U2 R U' F R U R' U' R' F' U' R U R U' R' (y2')",
+            "R' U' R B2 D (L' U L U' L) D' B2",
+            "(y2) L' U' L (y') R2' u (R' U R U' R) u' R2",
+            "(y') R' U L' U2 R U' L (y) R L U2 L' R'",
+            "R2 D L2 D F2 L D R' D2 L D' R' U2"
+            ] 
+        },
+        { 
+            id: 'Gc', 
+            name: 'Gc Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(y) R2 U' R U' R U R' U R2 D' U R U' R' D",
+            "(y') R2 F2 R U2 R U2 R' F R U R' U' R' F R2",
+            "(y) R2' u' (R U' R U R') u R2 (y) R U' R'",
+            "(y) R2' u' (R U' R U R') u R2 B U' B'",
+            "(y) R2' U' (R U' R U R') U R2 (D' U R U' R' D)",
+            "(y) R2' D' F U' F U F' D R2 B U' B'",
+            "(y2) F2' D' L U' L U L' D F2 R U' R'",
+            "L' U' L U L U' F' L' U' L' U L F U' L U2 L'",
+            "(y2) R' U' R U R U' B' R' U' R' U R B U' R U2 R' (y2')",
+            "(z) U' R' U R U R' F' U' R' U' R U F R' U R2 U' (z')",
+            "L' R' U2 L R (y) L U' R U2 L' U R'",
+            "B2 L2 U' B2 D B2 D' R2 U M2 F2 (x2)",
+            "(y') R2' F2 R U2 R U2 R' F R U R' U' R' F R2",
+            "(y') l' U2' L' U l F' U' L U F R' F R",
+            "(y) U F2 R2 L2 U' L2 U L2 D' L2 D R2 F2 U'",
+            "(y') (z)  U2 (r' U R' U R U' r) U2 F R' F' (z') (y)"
+            ] 
+        },
+        { 
+            id: 'Gd', 
+            name: 'Gd Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(y2) R U R' U' D R2 U' R U' R' U R' U R2 D'",
+            "(y2) D' R U R' U' D R2 U' R U' R' U R' U R2",
+            "(y2) R U R' (y') R2 u' (R U' R' U R') u R2",
+            "(y2) R U R' F2 D' L U' L' U L' D F2",
+            "(y2) (F U' R' F) (R2 U' R' U') (R U R' F')2",
+            "(y2) (F R U' R')2 (U R U R2') (F' R U F')",
+            "(y2) R' U2 R U R' U2' L U' R U L'",
+            "L' U R' U2 L U' R U L' U R' U2 L U' R",
+            "y2 R' U2 R U R' U2 L U' R U L'",
+            "(y) (R' U L') U2 (R U' R') U2 R L",
+            "(y2) F U' R U' R' U' R U R' F' R U R' U' R' F R U F'",
+            "B2 R' U' R B2 L' D L' D' L2",
+            "(y2) F2 L' U' L F2 R' D R' D' R2",
+            "(y2) F2 L' U' L b2 L' U L' U' r2",
+            "(y2) R' U2 R U R' (z) R2' U R' D R U' (z')",
+            "(y2) R' U2' R U R' (z) R2 U R' D R U' (z')",
+            "(z) D R' U' R D' R (R U R' U') R2 U (z')",
+            "R U' L' U R' U2 L U' L' U2' L",
+            "R' L' U2 L U L' U2 R U' L U",
+            "L' U2 L U L' U2 R U' L U R'",
+            "R' d' R U R' U F U F' U' R U2 R' U F U",
+            "(y2) (M' D2 M') R U R' F' R U R' U' R' F R2 U' R' (M D2 M)",
+            "L' U' L  F L' U' L U L F' L2 U L U",
+            "(y2) (R' U L' U2 R U' L) U (R' U L' U2 R U' L)"
+            ] 
+        },
+        { 
+            id: 'Ja', 
+            name: 'Ja Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(y2) x R2' F R F' R U2 r' U r U2 x'",
+            "(y2) L U' R' U L' U2 R U' R' U2 R",
+            "U R U R' U' R' F R2 U' R' U2 R U R' F' R U R' U' R' F R F'",
+            "(y) U R' U' R B R' U' R U l U' R2' F R (x)",
+            "(y2) (F U' R' F) (R2 U' R' U') (R U R' F')2",
+            "(y2) (F R U' R')2 (U R U R2') (F' R U F')",
+            "(y2) R' U2 R U R' U2' L U' R U L'",
+            "L' U R' U2 L U' R U L' U R' U2 L U' R",
+            "y2 R' U2 R U R' U2 L U' R U L'",
+            "(y) (R' U L') U2 (R U' R') U2 R L",
+            "(y2) F U' R U' R' U' R U R' F' R U R' U' R' F R U F'",
+            "B2 R' U' R B2 L' D L' D' L2",
+            "(y2) F2 L' U' L F2 R' D R' D' R2",
+            "(y2) F2 L' U' L b2 L' U L' U' r2",
+            "(y' x') L2 u L u' L2 (x' y) (L U' L U) r2",
+            "(y2 x) U2 l U l' U2 r (U' L U) r2",
+            "R U' L U2 R' U L' U' R U' L U2 R' U L'",
+            "B2 U D' B2 U B2 U' B2 D B2 U' B2 U",
+            "(y') L2 (U D') L2 U L2 U' L2 D L2 U' L2",
+            "R U R' F' R U R' U' l' U l2 F' l' U'",
+            "R U2 R' U' R U2 L' U R' U' L",
+            "R2 U F U F' R2 F U' F' R2 U' R2 U'"
+            ] 
+        },
+        { 
+            id: 'Jb', 
+            name: 'Jb Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "R U R' F' R U R' U' R' F R2 U' R' U'",
+            "(y2) R' U L U' R U2' L' U L U2 L'",
+            "R U R' F' R U R' U' R' F R2 U' R' U'",
+            "R U2 R' U' R U2 L' U R' U' r x",
+            "R U2 (R' U' R) U2 L' (U R' U') L",
+            "(y) (R U' L) U2 (R' U R) U2 L' R'",
+            "L' U R U' L U2 R' U R U2 R'",
+            "B2 (L U L') B2 (R D' R D) R2",
+            "(y2) F2 (R U R') F2 (L D' L D) L2",
+            "(y2) F2 (R U R') b2 (R U' R U) l2'",
+            "(y' x') L2 u L u' L2 (x' y) (L U' L U) r2",
+            "(y2 x) U2 l U l' U2 r (U' L U) r2",
+            "R U' L U2 R' U L' U' R U' L U2 R' U L'",
+            "B2 U D' B2 U B2 U' B2 D B2 U' B2 U",
+            "(y') L2 (U D') L2 U L2 U' L2 D L2 U' L2",
+            "R U R' F' R U R' U' l' U l2 F' l' U'",
+            "R U2 R' U' R U2 L' U R' U' L",
+            "R2 U F U F' R2 F U' F' R2 U' R2 U'"
+            ] 
+        },
+        { 
+            id: 'Na', 
+            name: 'Na Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(r' D r U2)5",
+            "(r' D' r U2)5",
+            "(l' D l U2)5",
+            "(l' D' l U2)5",
+            "R U R' U R U R' F' R U R' U' R' F R2 U' R' U2 R U' R'",
+            "F' R U R' U' R' F R2 F U' R' U' R U F' R'",
+            "R F U' R' U R U F' R2 F' R U R U' R' F",
+            "(z) U' F R F' R' F' U F2' U R' F' R' F R U' F' (z')",
+            "(z) B' U R U' R' U' B U2' B R' U' R' U R B' U' (z')",
+            "(z) F U' R' U R U F' U2 F' R U R U' R' F U (z')",
+            "z D' R U' R2 D R' U D' R U' R2 D R' U z'",
+            "(z) (U' R D' R2' U R' D)2 (z')",
+            "z U' R D' R2 U R' D U' R D' R2 U R' D z'",
+            "(z) U' R2 U (R U R' F' R U R' U' R' F R2 U' R' ) U2 R2 U z'",
+            "L' U R' d2 R U' L R' U L' U2 l F' r",
+            "r' D' F r U' r' F' D r2 U r' U' r' F r F'",
+            "R2 D R' U R D' R2 U' R U' R' U' F R U R' U' R' F' R "
+            ] 
+        },
+        { 
+            id: 'Nb', 
+            name: 'Nb Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(r D r' U2)5",
+            "(r D' r' U2)5",
+            "(l D l' U2)5",
+            "(l D' l' U2)5",
+            "R' (U r' F2 R F') M' (U r' F2 R F') r U",
+            "(R' U R U') R' F' U' F (R U R' F) (R' F' R U') R",
+            "(R' U R U') R' F' U' F (R U R' U') (R U' f R f')",
+            "(R' U L' U2 R U' L)2 U",
+            "(z) (D' R U' R2' D R' U)2 (z')",
+            "B R' U' R U R B' R2' B' U R U R' U' B R",
+            "(x') U R' F' R F R U' R2' U' F R F R' F' U R (x)",
+            "R' B' U R U' R' U' B R2 B R' U' R' U R B'",
+            "(x') R' U' F R F' R' F' U R2' U R' F' R' F R U' (x)",
+            "(z) U' F' (R U R' U' R' F) U2' F (U' R' U' R U F') (z')",
+            "(z) B' U' R B R' B' R' U B2' U B' R' B' R B U' (z')",
+            "(z) F U' R' U R U F' U2 F' R U R U' R' F U (z')",
+            "z D' R U' R2 D R' U D' R U' R2 D R' U z'",
+            "(z) (U' R D' R2' U R' D)2 (z')",
+            "z U' R D' R2 U R' D U' R D' R2 U R' D z'",
+            "(z) U' R2 U (R U R' F' R U R' U' R' F R2 U' R' ) U2 R2 U z'",
+            "L' U R' d2 R U' L R' U L' U2 l F' r",
+            "r' D' F r U' r' F' D r2 U r' U' r' F r F'",
+            "R2 D R' U R D' R2 U' R U' R' U' F R U R' U' R' F' R "
+            ] 
+        },
+        { 
+            id: 'Ra', 
+            name: 'Ra Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "(y') R U' R' U' R U R D R' U' R D' R' U2 R'",
+            "(y') R U R' F' R U2 R' U2 R' F R U R U2 R' U'",
+            "R U2 R' U2 R B' R' U' R U R B R2 U",
+            "R U2 R' U2 R B' R' U' R U l U R2 (x)",
+            "(y2 z) U R2 U' R2 U F' U' R' U R U F U2 (z')",
+            "(y2) L U2 L' U2 L F' L' U' L U L F L2",
+            "(y') R2 B' R' U' R' U R B R' U2 R U2 R'",
+            "(y) L2 F' L' U' L' U L F L' U2 L U2 L'",
+            "F2 R' F' U' F' U F R F' U2 F U2 F'",
+            "(y' x') R2 U' l' U' R' U l U l' U2 R U2 R'",
+            "(y') R l U' l' U' R' U l U l' U2 R U2' R'",
+            "F2 L2 U F U F' U' F' U' L2 F' U F' U'",
+            "R U' R F2 U R U R U' R' U' F2 R2 U",
+            "(y') R2 F2 U R U R' U' R' U' F2 R' U R'",
+            "(y') R U R' F' R U2 R' U2 R' F R U R U2 R' U'",
+            "R U2 R' U' R' F' R U2 R U2 R' F R U' R' U"
+            ] 
+        },
+        { 
+            id: 'Rb', 
+            name: 'Rb Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "R' U2 R U2 R' F (R U R' U') R' F' R2' U'",
+            "(y') L' U' L F L' U2 L U2 L F' L' U' L' U2 L U",
+            "R' U2 R U2 R' F (R U R' U') l' U' R2 (x')",
+            "(z') U' L2 U L2 U' F U L U' L' U' F' U2 (z)",
+            "R' U2 R U2 R' F R U R' U' R' F' R2",
+            "R' U2 R' D' R U' R' D R U R U' R' U' R",
+            "y' R U2 R' U2 R' F R2 U' R' U' R U R' F' R U R' U R U2 R'",
+            "y R2 F R U R U' R' F' R U2 R' U2 R",
+            "(y x) R2 U l U R U' l' U' l U2 R' U2 R",
+            "(y') r' L' U r U L U' r' U' r U2 L' U2 L",
+            "(y') L' U' L F L' U2 L U2 L F' L' U' L' U2 L U",
+            "(y2) L' U2 L U L F L' U2 L' U2 L F' L' U L U'"
+            ] 
+        },
+        { 
+            id: 'T', 
+            name: 'T Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "R U R' U' R' F R2 U' R' U' R U R' F'",
+            "F R U' R' U R U R2 F' R U R U' R'",
+            "R U R' U' R' F R2 U' R' U F' L' U L",
+            "R2 U R2 U' R2 U' D R2 U' R2 U R2 D'",
+            "(y2) L' U' L U L F' L2 U L U L' U' L F"
+            ] 
+        },
+        { 
+            id: 'V', 
+            name: 'V Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "R' U R' U' R D' R' D R' U D' R2 U' R2 D R2",
+            "(y) R U' R U R' D R D' R U' D R2 U R2 D' R2",
+            "(y) R' U R' U' R D' R' D R3 U D' R2 U' R2' D R2",
+            "R' U R U' R' f' U' (R U2 R' U' R U' R') f R",
+            "R' f' (R U R' U R U2 R') U f (R U R' U') R",
+            "R' U R' U' B' R' B2 U' B' U B' R B R",
+            "R' U R' d' R' F' R2 U' R' U R' F R F",
+            "R' U R' U' (y) R' F' R2 U' R' U R' F R F",
+            "(y2 z) U' R U' R' F' U' F2 l' U' l F' U F U (z' y2')",
+            "(y2 x) R U R U' B U' B' U2' R' U' B' R' B R' (x' y2')",
+            "R' U R' U' B' l' (x2' y') U2 R' U' R (y) U' R U R (x)",
+            "(z) D' R2 D R2 U R' D' R U' R U R' D R U'",
+            "R U2 R' D R U' R U' R U R2 D R' U' R D2",
+            "R' U R' U' R D' R' D R' U D' R2 U' R2 D R2",
+            "(y') F' U F' U' R' F' R2 U' R' U R' F R F",
+            "R2' D' R2 U R2' U' D R D' R D R' U R U' R"
+            ] 
+        },
+        { 
+            id: 'Y', 
+            name: 'Y Permutation', 
+            stage: 'PLL', 
+            algs: [
+            "F R U' R' U' R U R' F' R U R' U' R' F R F'",
+            "R' U' R U' L R U2 R' U' R U2 L' U R2 U R",
+            "R2 U' R' U R U' x D' R' U R' U' R' D R",
+            "F R' F R2 U' R' U' R U R' F' R U R' U' F'",
+            "R' U' R F2 R' U R d R2 U' R2' U' R2",
+            "R2 U' R2 U' R2 U R' F' R U R2 U' R' F R",
+            "R2 U' R2 U' R2 d R U R' B2 R U' R'",
+            "R2 U' R2 U' R2 U y' R U R' B2 R U' R'",
+            "F2 D R2 U R2 D' R' U' R F2 R' U R",
+            "(y') R2 u R2' U R2 D' R' U' R F2' R' U R",
+            "(R U R' U') (R' F R F') (R U R' U') R' F (R2 U' R' U) (R U R' F')",
+            "R2' U' R2 U' R2' U R2 D' R2' U R2 U' R2' D R2"
+            ] 
+        },
+        // --- OLL ---
+        { id: 'OLL1', name: 'Runway', stage: 'OLL', algs: ["R U2' R2' F R F' U2 R' F R F'", "(U) R U' R2 D' r U' r' D R2 U R'"] },
+        { id: 'OLL2', name: 'Zamboni', stage: 'OLL', algs: ["(U') R U' R2' D' r U r' D R2 U R", "F R U R' U' S R U R' U' f'", "(U2) f' U R U' R' S' U R U' R' F'"] },
+        { id: 'OLL3', name: 'Anti-Pinwheel', stage: 'OLL', algs: ["(U) f (R U R' U') f' U' F (R U R' U') F'", "(U2) r' R2 U R' U r U2 r' U M'", "(U2) L' l U l' U2 l U L' U L M'", "(U') R' F2 R2 U2' R' F R U2' R2' F2 R"] },
+        { id: 'OLL4', name: 'Pinwheel', stage: 'OLL', algs: ["f R U R' U' f' U F R U R' U' F'", "(U) l L2' U' L U' l' U2 l U' M'", "(U) R r' U' r U2 r' U' R U' R2' r", "R' F2 R2 U2' R' F' R U2' R2' F2 R"] },
+        { id: 'OLL5', name: 'Right Back Wide Antisune', stage: 'OLL', algs: ["(U2) l' U2 L U L' U l", "r' U2' R U R' U r"] },
+        { id: 'OLL6', name: 'Right Front Wide Antisune', stage: 'OLL', algs: ["(U2) r U2 R' U' R U' r'"] },
+        { id: 'OLL7', name: 'Lightning', stage: 'OLL', algs: ["r U R' U R U2 r'"] },
+        { id: 'OLL8', name: 'Wide Left Sune', stage: 'OLL', algs: ["l' U' L U' L' U2 l", "(U2) r' U' R U' R' U2 r", "R U2' R' U2 R' F R F'"] },
+        { id: 'OLL9', name: 'Kite', stage: 'OLL', algs: ["(U') R U R' U' R' F R2 U R' U' F'"] },
+        { id: 'OLL10', name: 'Anti-Kite', stage: 'OLL', algs: ["(U') R U R' U R' F R F' R U2' R'", "F U F' R' F R U' R' F' R"] },
+        { id: 'OLL11', name: 'Downstairs', stage: 'OLL', algs: ["(U') r' R2 U R' U R U2' R' U M'", "(U) r U R' U R' F R F' R U2' r'"] },
+        { id: 'OLL12', name: 'Upstairs', stage: 'OLL', algs: ["(U') r R2' U' R U' R' U2 R U' r' R", "(U) l L2' U' L U' L' U2 L U' M'"] },
+        { id: 'OLL13', name: 'Gun', stage: 'OLL', algs: ["F U R U2' R' U' R U R' F'", "F U R U' R2' F' R U R U' R'", "r U' r' U' r U r' F' U F"] },
+        { id: 'OLL14', name: 'Anti-Gun', stage: 'OLL', algs: ["R' F R U R' F' R F U' F'"] },
+        { id: 'OLL15', name: 'Squeegee', stage: 'OLL', algs: ["(U2) l' U' l L' U' L U l' U l", "r' U' r R' U' R U r' U r"] },
+        { id: 'OLL16', name: 'Anti-Squeegee', stage: 'OLL', algs: ["(U2) r U r' R U R' U' r U' r'"] },
+        { id: 'OLL17', name: 'Slash', stage: 'OLL', algs: ["R U R' U R' F R F' U2 R' F R F'", "(U2) F R' F' R U S' R U' R' S"] },
+        { id: 'OLL18', name: 'Crown', stage: 'OLL', algs: ["R U2 R2 F R F' U2 M' U R U' r'", "(U) R U R2 F' U' F U R U2' R' F R F'", "(U) F R U R' d R' U2 (R' F R F')", "(U') r U R' U R U2 r2' U' R U' R' U2 r"] },
+        { id: 'OLL19', name: 'Bunny', stage: 'OLL', algs: ["S' R U R' S U' R' F R F'", "(U') r' R U R U R' U' r R2 F R F'"] },
+        { id: 'OLL20', name: 'X', stage: 'OLL', algs: ["r' R U R U R' U' r R' M' U R U' r'", "r U R' U' r R' M' U R U' R' U' M'", "S' R U R' S U' M' U R U' r'"] },
+        { id: 'OLL21', name: 'H', stage: 'OLL', algs: ["R U R' U R U' R' U R U2 R'", "(U) R U2' R' U' R U R' U' R U' R'"] },
+        { id: 'OLL22', name: 'Pi', stage: 'OLL', algs: ["R U2' R2' U' R2 U' R2' U2' R"] },
+        { id: 'OLL23', name: 'Headlights', stage: 'OLL', algs: ["R2' D' R U2 R' D R U2 R", "(U2) R2 D R' U2 R D' R' U2 R'"] },
+        { id: 'OLL24', name: 'T', stage: 'OLL', algs: ["r U R' U' r' F R F'", "(U2) l' U' L U l F' L' F"] },
+        { id: 'OLL25', name: 'Bowtie', stage: 'OLL', algs: ["(U2) F R' F' r U R U' r'", "(U') F' r U R' U' r' F R"] },
+        { id: 'OLL26', name: 'Antisune', stage: 'OLL', algs: ["(U2) R' U' R U' R' U2 R", "(U') R U2' R' U' R U' R'", "L' U' L U' L' U2 L"] },
+        { id: 'OLL27', name: 'Sune', stage: 'OLL', algs: ["R U R' U R U2' R'", "(U') R' U2' R U R' U R"] },
+        { id: 'OLL28', name: 'Stealth', stage: 'OLL', algs: ["r U R' U' r' R U R U' R'"] },
+        { id: 'OLL29', name: 'Spotted Chameleon', stage: 'OLL', algs: ["(U) R U R' U' R U' R' F' U' F R U R'", "(U) R U R' U' R' F R F' R U R' U' M' U R U' r'", "r2' D' r U r' D r2 U' r' U' r"] },
+        { id: 'OLL30', name: 'Anti-Spotted Chameleon', stage: 'OLL', algs: ["(U2) F U R U2' R' U' R U2 R' U' F'", "(U') r' D' r U' r' D r2 U' r' U r U r'", "(U2) F R' F R2 U' R' U' R U R' F2'"] },
+        { id: 'OLL31', name: 'Couch', stage: 'OLL', algs: ["(U2) R' U' F U R U' R' F' R"] },
+        { id: 'OLL32', name: 'Anti-Couch', stage: 'OLL', algs: ["S R U R' U' R' F R f'", "(U2) L U F' U' L' U L F L'", "R U B' U' R' U R B R'"] },
+        { id: 'OLL33', name: 'Tying Shoelaces', stage: 'OLL', algs: ["R U R' U' R' F R F'"] },
+        { id: 'OLL34', name: 'City', stage: 'OLL', algs: ["R U R2' U' R' F R U R U' F'", "R U R' U' y l' U' L U L' l", "(U') f R f' U' r' U' R U M'"] },
+        { id: 'OLL35', name: 'Fish Salad', stage: 'OLL', algs: ["R U2' R2' F R F' R U2' R'"] },
+        { id: 'OLL36', name: 'Sea-Mew', stage: 'OLL', algs: ["(U2) L' U' L U' L' U L U L F' L' F", "(U2) R U R' F' R U R' U' R' F R U' R' F R F'", "(U) R' F' U' F2 U R U' R' F' R", "(U) R U R2' F' U' F U R2 U2' R'"] },
+        { id: 'OLL37', name: 'Mounted Fish', stage: 'OLL', algs: ["(U) F R' F' R U R U' R'"] },
+        { id: 'OLL38', name: 'Mario', stage: 'OLL', algs: ["(U2) R U R' U R U' R' U' R' F R F'"] },
+        { id: 'OLL39', name: 'Fung', stage: 'OLL', algs: ["L F' L' U' L U F U' L'", "(U2) R U R' F' U' F U R U2' R'", "(U2) f' r U r' U' r' F r S"] },
+        { id: 'OLL40', name: 'Anti-Fung', stage: 'OLL', algs: ["R' F R U R' U' F' U R"] },
+        { id: 'OLL41', name: 'Awkward Fish', stage: 'OLL', algs: ["(U2) R U R' U R U2 R' F R U R' U' F'"] },
+        { id: 'OLL42', name: 'Lefty Awkward Fish', stage: 'OLL', algs: ["R' U' R U' R' U2' R F R U R' U' F'", "R' U' R U' R' U2' R U R' F' U' F U R", "(U) R' F R F' R' F R F' R U R' U' R U R'", "(U) F R' F' R U2 R' U' R2 U' R2' U2' R"] },
+        { id: 'OLL43', name: 'Anti-P', stage: 'OLL', algs: ["(U) R' U' F' U F R"] },
+        { id: 'OLL44', name: 'P', stage: 'OLL', algs: ["(U2) F (U R U' R') F'", "f (R U R' U') f'"] },
+        { id: 'OLL45', name: 'Suit up', stage: 'OLL', algs: ["F R U R' U' F'"] },
+        { id: 'OLL46', name: 'Seein\' Headlights', stage: 'OLL', algs: ["R' U' R' F R F' U R"] },
+        { id: 'OLL47', name: 'Anti-Breakneck', stage: 'OLL', algs: ["(U') F R' F' R U2 R U' R' U R U2' R'", "R' U' R' F R F' R' F R F' U R", "F' L' U' L U L' U' L U F", "(U') R' F' U' F U F' U' F U R"] },
+        { id: 'OLL48', name: 'Breakneck', stage: 'OLL', algs: ["F R U R' U' R U R' U' F'"] },
+        { id: 'OLL49', name: 'Right back squeezy', stage: 'OLL', algs: ["(U2) r U' r2' U r2 U r2' U' r", "R B' R2' F R2 B R2' F' R"] },
+        { id: 'OLL50', name: 'Right front squeezy', stage: 'OLL', algs: ["(U2) R' F R2 B' R2' F' R2 B R'", "r' U r2 U' r2' U' r2 U r'"] },
+        { id: 'OLL51', name: 'Bottlecap', stage: 'OLL', algs: ["F U R U' R' U R U' R' F'", "(U2) f R U R' U' R U R' U' f'", "(U) R' U' R' F R F' R U2' R' U2 R"] },
+        { id: 'OLL52', name: 'Rice Cooker', stage: 'OLL', algs: ["R U R' U R U' B U' B' R'", "(U2) R' F' U' F U' R U R' U R"] },
+        { id: 'OLL53', name: 'Frying Pan', stage: 'OLL', algs: ["l' U' L U' L' U L U' L' U2 l", "(U') r' U2' R U R' U' R U R' U r", "(U2) r' U' R U' R' U R U' R' U2 r"] },
+        { id: 'OLL54', name: 'Anti-Frying Pan', stage: 'OLL', algs: ["r U R' U R U' R' U R U2' r'", "(U') r U2' R' U' R U R' U' R U' r'"] },
+        { id: 'OLL55', name: 'Highway', stage: 'OLL', algs: ["(U) R' F R U R U' R2' F' R2 U' R' U R U R'", "(U) R' F U R U' R2' F' R2 U R' U' R", "(U) r U2' R' U' r' R2 U R' U' r U' r'"] },
+        { id: 'OLL56', name: 'Streetlights', stage: 'OLL', algs: ["r U r' U R U' R' U R U' R' r U' r'", "r U r' U R U' R' M' U R U2' r'"] },
+        { id: 'OLL57', name: 'Mummy', stage: 'OLL', algs: ["R U R' U' M' U R U' r'"] },
+
+        // --- F2L ---
+        { id: 'F2L1', name: 'F2L 1', stage: 'F2L', algs: ["U (R U' R')", "R' F R F'", "U2 (R U2 R')"] },
+        { id: 'F2L2', name: 'F2L 2', stage: 'F2L', algs: ["y' U' (R' U R)", "U' (F' U F)", "F R' F' R", "y U' (L' U L)", "d' L' U L"] },
+        { id: 'F2L3', name: 'F2L 3', stage: 'F2L', algs: ["F' U' F", "y' (R' U' R)", "y (L' U' L)"] },
+        { id: 'F2L4', name: 'F2L 4', stage: 'F2L', algs: ["(R U R')", "y F U F'", "y' f R f'"] },
+        { id: 'F2L5', name: 'F2L 5', stage: 'F2L', algs: ["(U' R U R') U2 (R U' R')", "(U' R U R') U (R' F R F')", "U' (R U R') U' R U2 R'", "U F' R' F' R F", "U R F R' F' R'"] },
+        { id: 'F2L6', name: 'F2L 6', stage: 'F2L', algs: ["d (R' U' R) U2' (R' U R)", "y' (U R' U' R) U2 (R' U R)", "U' (r U' R' U) (R U r')", "y F2 (R U R' U') F2", "U' F' R' F R F", "U' R F R F' R'"] },
+        { id: 'F2L7', name: 'F2L 7', stage: 'F2L', algs: ["U' (R U2' R') U2 (R U' R')", "(U' R U2 R')2"] },
+        { id: 'F2L8', name: 'F2L 8', stage: 'F2L', algs: ["d (R' U2 R) U2' (R' U R)", "y' U (R' U2 R) U2 (R' U R)", "U (R' F R F')2 (R U' R')", "(r' U2) (R2 U R2 U r)"] },
+        { id: 'F2L9', name: 'F2L 9', stage: 'F2L', algs: ["U' R U' R' d R' U' R", "U' R U' R' U (F' U' F)", "d (R' U' R U') (R' U' R)", "F (R U R' U') F' R U' R'", "y F2 (U R U' R') F2", "R' U' R F' U' F", "F U' F2' U' F"] },
+        { id: 'F2L10', name: 'F2L 10', stage: 'F2L', algs: ["U' (R U R' U)(R U R')", "R d' R U R' U2 F'", "U F' U F U' R U R'", "d R' U R d' R U R'", "y2 B2 (U' R' U R) B2", "F U F' R U R'", "R' U R2 U R'"] },
+        { id: 'F2L11', name: 'F2L 11', stage: 'F2L', algs: ["U' (R U2' R') d (R' U' R)", "U' (R U2' R') U (F' U' F)", "(y') R U2 R2 U' R2 U' R'", "L U2 L2 U' L"] },
+        { id: 'F2L12', name: 'F2L 12', stage: 'F2L', algs: ["R U' R' U R U' R' U2 R U' R'", "R U2 R' U2' R U2' R' U2' R U' R'", "R' U2 R2 U R2 U R", "(U R U' R') U' (R U R' U') (R U R')", "R U R' U (R' F R F') (R U R')", "R' U2 R2 U R'"] },
+        { id: 'F2L13', name: 'F2L 13', stage: 'F2L', algs: ["d (R' U R U') (R' U' R)", "y' U (R' U R U') (R' U' R)", "(R U' R') U (R' F R F') (R U' R')", "F U F' R' U' R"] },
+        { id: 'F2L14', name: 'F2L 14', stage: 'F2L', algs: ["U' (R U' R' U) (R U R')", "F U' F' R U R'"] },
+        { id: 'F2L15', name: 'F2L 15', stage: 'F2L', algs: ["R' D' R U' R' D R U (R U' R')", "(F' U F) U2 (R U R')", "U (R' F R F') U (R U R')", "R U2 R' U R U R' U R U' R'", "R U R' U2 R U' R' U R U' R'", "R U' R U2' R2' U' R2 U' R2'", "U' R2 U2 R U' R' U R' U2 R2", "U2 (R U R' U') R U2 R' U R U R'", "U' R' U2 R' U R' U' R U2 R", "R U' R U2 R2 U' R2 U' R2"] },
+        { id: 'F2L16', name: 'F2L 16', stage: 'F2L', algs: ["(R U' R' U) d (R' U' R)", "(R U' R') U2 (F' U' F)", "(U) R (F R U R' U' F') R'", "y' U R U2 R U' R U R' U2 R'", "F' R' U' R U F"] },
+        { id: 'F2L17', name: 'F2L 17', stage: 'F2L', algs: ["(R U2 R') U' (R U R')"] },
+        { id: 'F2L18', name: 'F2L 18', stage: 'F2L', algs: ["y' (R' U2 R) U (R' U' R)", "y (L' U2 L) U (L' U' L)", "(R U R' U') (R U R' U') F R' F' R", "(R' F R F') (R U' R' U) (R U' R')"] },
+        { id: 'F2L19', name: 'F2L 19', stage: 'F2L', algs: ["U (R U2 R') U (R U' R')", "(R U' R' U)2 R U R'"] },
+        { id: 'F2L20', name: 'F2L 20', stage: 'F2L', algs: ["y' U' (R' U2 R) U' (R' U R)", "U' (R U' R2' F R F') (R U' R')", "y' (R' U R U')2 R' U' R"] },
+        { id: 'F2L21', name: 'F2L 21', stage: 'F2L', algs: ["(R U' R') U2 (R U R')", "U2 (R U R' U)(R U' R')"] },
+        { id: 'F2L22', name: 'F2L 22', stage: 'F2L', algs: ["y' (R' U R) U2 (R' U' R)", "y' U2 (R' U' R U') (R' U R)", "r U' r' U2 r U r'", "U (F R U R' U' F') R U R' U2'"] },
+        { id: 'F2L23', name: 'F2L 23', stage: 'F2L', algs: ["U2 R2 U2 (R' U' R U') R2", "U (F R' F' R) U (R U R')", "U R U' R' U' R U' R' U R U' R'", "(R U R' U') U' (R U R' U')(R U R')", "R U' R' U' (R U R') U2 (R U R')", "R2 U R' U R U2 R' U' R'"] },
+        { id: 'F2L24', name: 'F2L 24', stage: 'F2L', algs: ["(R U R') d (R' U R U') (R' U R)", "y' (R' U' R U) U (R' U' R U)(R' U' R)", "y' U2 R2 U2 (R U R' U) R2", "U' (R U) (R2' F R F') (R U' R')", "F U (R U' R' F')(R U' R')", "(R U R' U) (R U R' U') (F R' F' R)", "(R U R' U) (R U2 R') F' U2 F"] },
+        { id: 'F2L25', name: 'F2L 25', stage: 'F2L', algs: ["U' (R' F R F') (R U R')", "R' U' R' U' R' U R U R", "U' (F' U F) U (R U' R')", "R' F' R U R U' R' F", "(U') F' R U R' U' R' F R", "(R U' R' U') (R U' R' U) (R U R')", "(U) (R' U' R' U') R2 (U R U R)", "(U2) (R' U' R' U' R U R U R)", "R2 U' R' U R2", "U D' R U' R' D"] },
+        { id: 'F2L26', name: 'F2L 26', stage: 'F2L', algs: ["y' R U R U R U' R' U' R'", "U (R U' R') U' (F' U F)", "U (R U' R') (F R' F' R)", "y' (U') R U R U R2 U' R' U' R'", "y' (U2) R U R U R' U' R' U' R'", "r U r' U2 r U r' U2 r U' r'"] },
+        { id: 'F2L27', name: 'F2L 27', stage: 'F2L', algs: ["(R U' R' U)(R U' R')", "(R U' R2)(F R F')"] },
+        { id: 'F2L28', name: 'F2L 28', stage: 'F2L', algs: ["(R U R' U') F R' F' R", "(R U R') d (R' U2 R)", "y (L' U L U') (L' U L)", "y' (R' U R U')(R' U R)", "(R U R') U (F' U2 F)"] },
+        { id: 'F2L29', name: 'F2L 29', stage: 'F2L', algs: ["y' (R' U' R U)(R' U' R)", "U2 (R U' R') y' (R' U' R)", "(R' F R F')2", "(R' F R F') (U R U' R')"] },
+        { id: 'F2L30', name: 'F2L 30', stage: 'F2L', algs: ["(R U R' U')(R U R')", "U2 (F' U F)(R U R')", "U' (R U2 R')U2 (R U R')"] },
+        { id: 'F2L31', name: 'F2L 31', stage: 'F2L', algs: ["(R U' R') d (R' U R)", "(R U' R' U)(F' U F)", "U' (R' F R F') (R U' R')", "R U2 R' U' F R' F' R"] },
+        { id: 'F2L32', name: 'F2L 32', stage: 'F2L', algs: ["(R U R' U')2 (R U R')", "(U R U' R')3", "U' (R U R' U') (R U R' U) (R U' R')"] },
+        { id: 'F2L33', name: 'F2L 33', stage: 'F2L', algs: ["U' (R U' R') U2' (R U' R')", "(U' R U' R') U2 (R U' R')", "y U' (L' U' L) U2 (L' U' L)", "u R U' R' u'", "E F' U' F u"] },
+        { id: 'F2L34', name: 'F2L 34', stage: 'F2L', algs: ["U (F' U F) U2 (F' U F)", "U' (R U2' R') U (R U R')", "U (R U R') U2 (R U R')", "d (R' U R) U2 (R' U R)", "y (U L' U L) U2 (L' U L)", "U y F U2 R U2 R' F'", "E' R U R' E", "u' F' U F u"] },
+        { id: 'F2L35', name: 'F2L 35', stage: 'F2L', algs: ["U' R U R' U (F' U' F)", "(U' R U R') d (R' U' R)", "U2 (R U' R') U' (F' U' F)"] },
+        { id: 'F2L36', name: 'F2L 36', stage: 'F2L', algs: ["U F' U' F U' (R U R')", "U2 (R' F R F') U2 (R U R')", "y' U (R' U' R U') y (R U R')"] },
+        { id: 'F2L37', name: 'F2L 37 (Solved)', stage: 'F2L', algs: [] }, 
+        { id: 'F2L38', name: 'F2L 38', stage: 'F2L', algs: ["(R' F R F') (R U' R' U) (R U' R' U2) (R U' R')", "(R U' R') d (R' U2 R) U2' (R' U R)", "(R U R') U2 (R U2 R') d (R' U' R)", "(R2 U2) (F R2 F') (U2 R' U R')", "R U' R2 U2 R U' F' U F", "R U' R2 U2 R F R' F' R", "R U' R2 U2 R U2 F' U2 F"] },
+        { id: 'F2L39', name: 'F2L 39', stage: 'F2L', algs: ["(R U' R') U' (R U R') U2 (R U' R')", "y' (R' U' R) U2 (R' U R U') (R' U' R)", "(R U R' U') (R U2 R') U' (R U R')"] },
+        { id: 'F2L40', name: 'F2L 40', stage: 'F2L', algs: ["(R U' R' U)(R U2' R') U (R U' R')", "(R U R') U2 (R U' R' U)(R U R')", "(R U2) (R U R' U) (R U2 R2')", "y' R2 U2 R U R' U R U2 R"] },
+        { id: 'F2L41', name: 'F2L 41', stage: 'F2L', algs: ["(r U' r') U2 (r U r') (R U R')", "(R U' R') d (R' U' R U') (R' U' R)", "R U' R' U' R U' R' d R' U' R", "R (F U R U' R' F') U' R'", "R U' R2 U' R y' R' U' R y"] },
+        { id: 'F2L42', name: 'F2L 42', stage: 'F2L', algs: ["(R U' R') (r U' r') U2 (r U r')", "(R U' R' U) d (R' U' R U') (R' U R)", "(R U' R' U2) y' (R' U' R U' R' U R)", "(R U R' U') (R U' R') U2 (F' U' F)", "R U (F R U R' U' F') R'", "y' R' U R2 U R' y R U R'"] }
+      ];
+
+      // --- UTILS: Audio Processing ---
+
+      function decodeAudioChunk(base64) {
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
+      }
+
+      async function decodeAudioData(data, ctx, sampleRate, numChannels) {
+        const dataInt16 = new Int16Array(data.buffer);
+        const frameCount = dataInt16.length / numChannels;
+        const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+        for (let channel = 0; channel < numChannels; channel++) {
+          const channelData = buffer.getChannelData(channel);
+          for (let i = 0; i < frameCount; i++) {
+            channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+          }
+        }
+        return buffer;
+      }
+
+      function encodeAudioChunk(data) {
+        const l = data.length;
+        const int16 = new Int16Array(l);
+        for (let i = 0; i < l; i++) {
+          int16[i] = data[i] * 32768;
+        }
+        let binary = '';
+        const bytes = new Uint8Array(int16.buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      function createPcmBlob(data) {
+        return {
+          data: encodeAudioChunk(data),
+          mimeType: 'audio/pcm;rate=16000',
+        };
+      }
+
+      // --- COMPONENT: GeminiAnalysis ---
+
+      const GeminiAnalysis = ({ 
+        alg, 
+        stage,
+        caseName, 
+        userFavorites, 
+        allCases,
+        onSelectCase,
+        onSelectAlg,
+        currentCaseId,
+        onTriggerPlayback
+      }) => {
+        const [activeTab, setActiveTab] = useState('analyze');
+        
+        // Analysis State
+        const [loading, setLoading] = useState(false);
+        const [analysis, setAnalysis] = useState(null);
+        const [error, setError] = useState(null);
+        const [lastAnalyzedAlg, setLastAnalyzedAlg] = useState("");
+
+        // Recommendation State
+        const [recLoading, setRecLoading] = useState(false);
+        const [recommendations, setRecommendations] = useState([]);
+        const [recType, setRecType] = useState(null);
+
+        // --- Live API State ---
+        const [isLiveConnected, setIsLiveConnected] = useState(false);
+        const [isLiveConnecting, setIsLiveConnecting] = useState(false);
+        
+        // Audio Contexts & Refs
+        const inputAudioContextRef = useRef(null);
+        const outputAudioContextRef = useRef(null);
+        const sessionRef = useRef(null);
+        const streamRef = useRef(null);
+        const processorRef = useRef(null);
+        const nextStartTimeRef = useRef(0);
+        const audioSourcesRef = useRef(new Set());
+
+        // Cleanup Audio on unmount
+        useEffect(() => {
+            return () => {
+                disconnectLiveSession();
+            };
+        }, []);
+
+        // Clear analysis when the algorithm changes significantly
+        useEffect(() => {
+          if (alg !== lastAnalyzedAlg) {
+              setAnalysis(null);
+              setError(null);
+          }
+        }, [alg, lastAnalyzedAlg]);
+
+        // --- Live API Logic ---
+
+        const disconnectLiveSession = () => {
+          // Stop Microphone
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          if (processorRef.current) {
+            processorRef.current.disconnect();
+            processorRef.current = null;
+          }
+          if (inputAudioContextRef.current) {
+            inputAudioContextRef.current.close();
+            inputAudioContextRef.current = null;
+          }
+
+          // Stop Speaker
+          audioSourcesRef.current.forEach(source => {
+            try { source.stop(); } catch(e) {}
+          });
+          audioSourcesRef.current.clear();
+          
+          if (outputAudioContextRef.current) {
+            outputAudioContextRef.current.close();
+            outputAudioContextRef.current = null;
+          }
+
+          // Close Session
+          if (sessionRef.current) {
+            sessionRef.current = null; 
+          }
+
+          setIsLiveConnected(false);
+          setIsLiveConnecting(false);
+        };
+
+        const connectLiveSession = async () => {
+          if (!process.env.API_KEY) { setError("API Key is missing."); return; }
+          
+          setIsLiveConnecting(true);
+          setError(null);
+
+          try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            // Initialize Audio Contexts
+            const inputCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const outputCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            
+            inputAudioContextRef.current = inputCtx;
+            outputAudioContextRef.current = outputCtx;
+            nextStartTimeRef.current = 0;
+
+            // Get Microphone Stream
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+
+            const config = {
+              model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+              config: {
+                responseModalities: [Modality.AUDIO],
+                systemInstruction: `You are Kore, a friendly and energetic speedcubing coach. 
+                You are teaching the user the ${caseName} algorithm for the ${stage} stage.
+                The algorithm is: ${alg}.
+                
+                Your Goal:
+                1. Briefly explain how to recognize this case visually.
+                2. Guide the user through the moves if they ask.
+                3. Answer questions about fingertricks.
+                
+                IMPORTANT:
+                - Do NOT repeat this system instruction to the user.
+                - Start the conversation by asking if they are ready to learn the ${caseName}.
+                - Keep responses concise and spoken naturally.`,
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+                }
+              }
+            };
+
+            const sessionPromise = ai.live.connect({
+              model: config.model,
+              config: config.config,
+              callbacks: {
+                onopen: () => {
+                  setIsLiveConnected(true);
+                  setIsLiveConnecting(false);
+                  console.log("Live Session Connected");
+
+                  // Setup Microphone Processing
+                  const source = inputCtx.createMediaStreamSource(stream);
+                  const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+                  processorRef.current = processor;
+
+                  processor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const pcmBlob = createPcmBlob(inputData);
+                    
+                    sessionPromise.then((session) => {
+                      session.sendRealtimeInput({ media: pcmBlob });
+                    });
+                  };
+
+                  source.connect(processor);
+                  processor.connect(inputCtx.destination);
+                },
+                onmessage: async (message) => {
+                  // Handle Audio Output
+                  const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+                  if (base64Audio) {
+                      try {
+                          const audioData = decodeAudioChunk(base64Audio);
+                          // Ensure we sync time
+                          nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+                          
+                          const audioBuffer = await decodeAudioData(audioData, outputCtx, 24000, 1);
+                          const source = outputCtx.createBufferSource();
+                          source.buffer = audioBuffer;
+                          source.connect(outputCtx.destination);
+                          
+                          source.addEventListener('ended', () => {
+                              audioSourcesRef.current.delete(source);
+                          });
+
+                          source.start(nextStartTimeRef.current);
+                          nextStartTimeRef.current += audioBuffer.duration;
+                          audioSourcesRef.current.add(source);
+
+                          // Trigger the cube animation when the AI starts speaking (simple sync)
+                          if (outputCtx.state === 'running') {
+                            onTriggerPlayback();
+                          }
+
+                      } catch (e) {
+                          console.error("Error decoding audio chunk", e);
+                      }
+                  }
+                  
+                  if (message.serverContent?.interrupted) {
+                      audioSourcesRef.current.forEach(s => s.stop());
+                      audioSourcesRef.current.clear();
+                      nextStartTimeRef.current = 0;
+                  }
+                },
+                onclose: () => {
+                  console.log("Live Session Closed");
+                  disconnectLiveSession();
+                },
+                onerror: (e) => {
+                  console.error("Live Session Error", e);
+                  setError("Connection error. Please try again.");
+                  disconnectLiveSession();
+                }
+              }
+            });
+            
+            sessionRef.current = sessionPromise;
+
+          } catch (err) {
+            console.error(err);
+            setError("Failed to start live session: " + err.message);
+            setIsLiveConnecting(false);
+          }
+        };
+
+        const handleAnalyze = async () => {
+          if (!process.env.API_KEY) { setError("API Key is missing."); return; }
+          if (!alg.trim()) { setError("Please enter an algorithm first."); return; }
+
+          setLoading(true);
+          setError(null);
+          
+          try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+              model: 'gemini-3-pro-preview',
+              config: {
+                systemInstruction: "You are a world-class speedcubing coach.",
+              },
+              contents: `Analyze the ${stage} case "${caseName}" with algorithm: "${alg}". 
+              
+              Structure output exactly like this:
+              **Recognition**: How to identify this specific case quickly (patterns, blocks, headlights).
+              **Function**: What pieces are swapped/oriented?
+              **Triggers**: Identify Sexy Move, Sledgehammer, or key inserts.
+              **Fingertricks**: Advice on execution (re-grips, index pushes).`,
+            });
+            
+            setAnalysis(response.text || "No analysis generated.");
+            setLastAnalyzedAlg(alg);
+          } catch (err) {
+            setError(err.message || "Failed to fetch analysis.");
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const handleGetNextCaseRecommendations = async () => {
+          if (!process.env.API_KEY) { setError("API Key missing."); return; }
+
+          setRecLoading(true);
+          setRecommendations([]);
+          setRecType('next_case');
+          
+          try {
+              const favoriteAlgs = Object.values(userFavorites);
+              const learnedIds = Object.keys(userFavorites);
+              
+              const unlearnedCandidates = allCases
+                  .filter(c => c.stage === stage && !learnedIds.includes(c.id))
+                  .sort(() => 0.5 - Math.random())
+                  .slice(0, 10);
+
+              if (unlearnedCandidates.length === 0) {
+                  setError("You've learned all algorithms in this stage!");
+                  setRecLoading(false);
+                  return;
+              }
+
+              const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+              
+              const prompt = `
+                I am learning the ${stage} stage.
+                ALGORITHMS I ALREADY KNOW: ${favoriteAlgs.length > 0 ? favoriteAlgs.join('; ') : "None yet"}
+                POTENTIAL NEXT CASES: ${unlearnedCandidates.map(c => `ID: ${c.id} | Alg: ${c.algs[0]}`).join('\n')}
+
+                Pick the 3 BEST cases for me to learn next based on my style.
+                Return JSON: [{ "id": "Case ID", "reason": "Why", "similarity": "High/Medium/Low" }]
+              `;
+
+              const response = await ai.models.generateContent({
+                  model: 'gemini-3-pro-preview',
+                  contents: prompt,
+                  config: {
+                      responseMimeType: "application/json",
+                      responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                          type: Type.OBJECT,
+                          properties: {
+                            id: { type: Type.STRING },
+                            reason: { type: Type.STRING },
+                            similarity: { type: Type.STRING }
+                          }
+                        }
+                      }
+                  }
+              });
+
+              const recs = JSON.parse(response.text);
+              const hydratedRecs = recs.map((r) => {
+                  const caseObj = unlearnedCandidates.find(c => c.id === r.id);
+                  return caseObj ? { ...r, caseData: caseObj, type: 'case' } : null;
+              }).filter(Boolean);
+
+              setRecommendations(hydratedRecs);
+
+          } catch (e) {
+              setError("Recommendation failed: " + e.message);
+          } finally {
+              setRecLoading(false);
+          }
+        };
+
+        const handleGetBestAlgForCurrentCase = async () => {
+          if (!process.env.API_KEY) { setError("API Key missing."); return; }
+          if (!currentCaseId) return;
+
+          setRecLoading(true);
+          setRecommendations([]);
+          setRecType('best_alg');
+
+          try {
+              const currentCase = allCases.find(c => c.id === currentCaseId);
+              if (!currentCase) throw new Error("Case not found");
+
+              const favoriteAlgs = Object.values(userFavorites);
+              const candidates = currentCase.algs;
+
+              const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+              const prompt = `
+                  I am learning the ${currentCase.name} (ID: ${currentCase.id}).
+                  Available Algs: ${candidates.map((a, i) => `${i}: ${a}`).join('\n')}
+                  My Style (Known Algs): ${favoriteAlgs.length > 0 ? favoriteAlgs.join('; ') : "None"}
+
+                  Pick top 2 algorithms that fit my style.
+                  Return JSON: [{ "alg": "string", "reason": "string", "matchScore": "string" }]
+              `;
+
+              const response = await ai.models.generateContent({
+                  model: 'gemini-3-pro-preview',
+                  contents: prompt,
+                  config: {
+                      responseMimeType: "application/json",
+                      responseSchema: {
+                          type: Type.ARRAY,
+                          items: {
+                              type: Type.OBJECT,
+                              properties: {
+                                  alg: { type: Type.STRING },
+                                  reason: { type: Type.STRING },
+                                  matchScore: { type: Type.STRING }
+                              }
+                          }
+                      }
+                  }
+              });
+
+              const recs = JSON.parse(response.text);
+              setRecommendations(recs.map((r) => ({ ...r, type: 'alg' })));
+
+          } catch (e) {
+              setError("Analysis failed: " + e.message);
+          } finally {
+              setRecLoading(false);
+          }
+        };
+
+        return (
+          <div className="flex flex-col h-full bg-gray-900/50">
+            
+            <div className="flex border-b border-white/5">
+              <button 
+                onClick={() => setActiveTab('analyze')}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'analyze' ? 'text-indigo-400 bg-indigo-500/5 border-b-2 border-indigo-500' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Analyze & Learn
+              </button>
+              <button 
+                onClick={() => setActiveTab('recommend')}
+                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'recommend' ? 'text-purple-400 bg-purple-500/5 border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Discover
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+              
+              {/* --- ANALYZE TAB --- */}
+              {activeTab === 'analyze' && (
+                  <div className="flex flex-col h-full space-y-4">
+                      
+                      {/* AI Coach Voice Section */}
+                      <div className={`border rounded-xl p-4 flex flex-col gap-3 shadow-inner transition-all ${isLiveConnected ? 'bg-indigo-950/30 border-indigo-500/50' : 'bg-gradient-to-br from-indigo-900/40 to-purple-900/40 border-indigo-500/20'}`}>
+                          <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                  <Bot className={isLiveConnected ? "text-indigo-400" : "text-indigo-300"} size={20} />
+                                  <span className="text-sm font-bold text-indigo-200">Coach Kore (Live)</span>
+                              </div>
+                              {isLiveConnected && (
+                                  <div className="flex gap-2 items-center">
+                                      <span className="flex h-2 w-2">
+                                          <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                      </span>
+                                      <span className="text-[10px] text-red-300 font-bold uppercase tracking-wider">Live</span>
+                                  </div>
+                              )}
+                          </div>
+                          <p className="text-xs text-gray-400">
+                              {isLiveConnected 
+                                  ? "Listening... Ask about recognition or moves." 
+                                  : "Connect for real-time voice coaching."}
+                          </p>
+                          
+                          <button 
+                              onClick={isLiveConnected ? disconnectLiveSession : connectLiveSession}
+                              disabled={isLiveConnecting}
+                              className={`w-full py-3 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${
+                                  isLiveConnected 
+                                      ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30' 
+                                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg'
+                              }`}
+                          >
+                              {isLiveConnecting ? (
+                                  <Loader2 className="animate-spin" size={16} />
+                              ) : isLiveConnected ? (
+                                  <><WifiOff size={16} /> End Session</>
+                              ) : (
+                                  <><Wifi size={16} /> Start Live Session</>
+                              )}
+                          </button>
+
+                          {/* Visualizer Placeholder */}
+                          {isLiveConnected && (
+                              <div className="h-8 flex items-center justify-center gap-1 opacity-70">
+                                  {[...Array(5)].map((_, i) => (
+                                      <div 
+                                          key={i} 
+                                          className="w-1 bg-indigo-400 rounded-full animate-pulse" 
+                                          style={{ 
+                                              height: '24px',
+                                              animationDuration: `${0.5 + Math.random() * 0.5}s`
+                                          }} 
+                                      />
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+
+                      {/* Text Analysis Section */}
+                      {!analysis && !loading && !error && (
+                          <div className="text-center opacity-50 py-6">
+                              <p className="text-xs text-gray-400">
+                                  Or analyze text breakdown below.
+                              </p>
+                          </div>
+                      )}
+
+                      {analysis && (
+                          <div className="bg-gray-950/50 border border-indigo-500/20 p-5 rounded-xl text-sm leading-relaxed text-gray-300 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+                              {analysis.split('\n').map((line, i) => {
+                                  const parts = line.split('**');
+                                  if (line.trim() === '') return <br key={i} />;
+                                  return (
+                                      <p key={i} className="mb-2 last:mb-0">
+                                          {parts.map((part, index) => 
+                                              index % 2 === 1 ? <strong key={index} className="text-indigo-300 font-semibold block mt-2 mb-1">{part}</strong> : part
+                                          )}
+                                      </p>
+                                  )
+                              })}
+                          </div>
+                      )}
+                      
+                      {error && (
+                          <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-200 text-xs rounded-lg flex gap-2 items-center">
+                              <AlertCircle size={14} />
+                              {error}
+                          </div>
+                      )}
+
+                      {!analysis && (
+                          <button
+                              onClick={handleAnalyze}
+                              disabled={loading || !alg}
+                              className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:text-white text-gray-400 rounded-lg font-medium flex items-center justify-center gap-2 transition-all text-sm"
+                          >
+                              <Sparkles size={16} /> Show Text Breakdown
+                          </button>
+                      )}
+                  </div>
+              )}
+
+              {/* --- RECOMMEND TAB --- */}
+              {activeTab === 'recommend' && (
+                  <div className="flex flex-col h-full">
+                      
+                      {!recLoading && recommendations.length === 0 && (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center min-h-[200px] gap-3">
+                              <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center mb-2">
+                                  <Lightbulb size={32} className="text-purple-400" />
+                              </div>
+                              
+                              {currentCaseId && (
+                                  <div className="w-full mb-4">
+                                      <h3 className="text-gray-200 font-medium mb-2">For {currentCaseId}:</h3>
+                                      <button
+                                          onClick={handleGetBestAlgForCurrentCase}
+                                          className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-purple-900/30 transition-all flex items-center justify-center gap-2 group"
+                                      >
+                                          <Crosshair size={16} /> 
+                                          <span>Find My Best Alg</span>
+                                          <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
+                                      </button>
+                                      <p className="text-[10px] text-gray-500 mt-2">Compares all options against your style.</p>
+                                  </div>
+                              )}
+
+                              <div className="w-full border-t border-gray-800 pt-4">
+                                  <h3 className="text-gray-400 text-xs font-medium mb-2 uppercase tracking-wider">General Learning</h3>
+                                  <button
+                                      onClick={handleGetNextCaseRecommendations}
+                                      className="w-full px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium rounded-xl border border-gray-700 transition-all flex items-center justify-center gap-2"
+                                  >
+                                      <Sparkles size={16} /> 
+                                      Suggest Next Case
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
+                      {recLoading && (
+                          <div className="flex-1 flex flex-col items-center justify-center min-h-[200px]">
+                              <Loader2 className="animate-spin text-purple-500 mb-3" size={32} />
+                              <span className="text-xs text-purple-300 animate-pulse">
+                                  {recType === 'best_alg' ? "Comparing algorithms to your style..." : "Finding your next challenge..."}
+                              </span>
+                          </div>
+                      )}
+
+                      {recommendations.length > 0 && (
+                          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                              <div className="flex justify-between items-end mb-2">
+                                  <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider">
+                                      {recType === 'best_alg' ? 'Recommended Algs' : 'Suggested Cases'}
+                                  </h4>
+                                  <button 
+                                      onClick={() => {
+                                          setRecommendations([]);
+                                          setRecType(null);
+                                      }} 
+                                      className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1"
+                                  >
+                                      <RotateCwIcon size={10} /> Reset
+                                  </button>
+                              </div>
+
+                              {recommendations.map((rec, idx) => {
+                                  if (rec.type === 'alg') {
+                                      return (
+                                          <div key={idx} className="bg-gray-800/40 border border-purple-500/20 rounded-xl p-4 hover:bg-gray-800/60 transition-all">
+                                              <div className="flex justify-between items-start mb-2">
+                                                  <span className="text-[10px] font-bold text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">
+                                                      {rec.matchScore} Match
+                                                  </span>
+                                                  {onSelectAlg && (
+                                                      <button 
+                                                          onClick={() => onSelectAlg(rec.alg)}
+                                                          className="flex items-center gap-1.5 px-2 py-1 bg-purple-500/20 text-purple-300 hover:bg-purple-500 hover:text-white rounded text-[10px] transition-all border border-purple-500/30"
+                                                      >
+                                                          <Play size={10} fill="currentColor" /> Try It
+                                                      </button>
+                                                  )}
+                                              </div>
+                                              <p className="text-xs text-gray-400 italic mb-3">"{rec.reason}"</p>
+                                              <div className="bg-gray-950/50 rounded p-2 font-mono text-[11px] text-indigo-300 break-words border border-black/20">
+                                                  {rec.alg}
+                                              </div>
+                                          </div>
+                                      );
+                                  } 
+                                  else {
+                                      return (
+                                          <div key={idx} className="bg-gray-800/40 border border-purple-500/20 rounded-xl p-4 hover:bg-gray-800/60 transition-all">
+                                              <div className="flex justify-between items-start mb-2">
+                                                  <div className="flex items-center gap-2">
+                                                      <span className="font-mono font-bold text-indigo-400">{rec.caseData.id}</span>
+                                                      <span className="text-[10px] text-gray-400 border border-gray-700 px-1 rounded">{rec.similarity} Match</span>
+                                                  </div>
+                                                  <button 
+                                                      onClick={() => onSelectCase(rec.caseData)}
+                                                      className="p-1.5 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition-all"
+                                                  >
+                                                      <ArrowRight size={14} />
+                                                  </button>
+                                              </div>
+                                              <p className="text-xs text-gray-400 italic mb-3">"{rec.reason}"</p>
+                                              <div className="bg-gray-950/50 rounded p-2 font-mono text-[10px] text-gray-500 truncate">
+                                                  {rec.caseData.algs[0]}
+                                              </div>
+                                          </div>
+                                      );
+                                  }
+                              })}
+                          </div>
+                      )}
+
+                  </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const RotateCwIcon = ({ size = 14, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+      );
+
+      // --- COMPONENT: App ---
+
+      const ProgressCard = ({ stage, total, learned }) => {
+        const percentage = Math.round((learned / total) * 100) || 0;
+        const radius = 30;
+        const circumference = 2 * Math.PI * radius;
+        const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+        // Color mapping
+        const colors = {
+            'F2L': 'text-blue-500',
+            'OLL': 'text-yellow-500',
+            'PLL': 'text-red-500'
+        };
+
+        return (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-4 relative overflow-hidden group">
+                <div className="relative w-16 h-16 flex items-center justify-center">
+                    {/* Background Circle */}
+                    <svg className="w-full h-full transform -rotate-90">
+                        <circle
+                            cx="32"
+                            cy="32"
+                            r={radius}
+                            stroke="currentColor"
+                            strokeWidth="6"
+                            fill="transparent"
+                            className="text-gray-800"
+                        />
+                        <circle
+                            cx="32"
+                            cy="32"
+                            r={radius}
+                            stroke="currentColor"
+                            strokeWidth="6"
+                            fill="transparent"
+                            strokeDasharray={circumference}
+                            strokeDashoffset={strokeDashoffset}
+                            className={`transition-all duration-1000 ease-out ${colors[stage]}`}
+                            strokeLinecap="round"
+                        />
+                    </svg>
+                    <span className="absolute text-xs font-bold text-white">{percentage}%</span>
+                </div>
+                <div className="flex flex-col z-10">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Mastery</span>
+                    <span className="text-lg font-bold text-gray-200">{stage}</span>
+                    <span className="text-xs text-gray-400">{learned} / {total} learned</span>
+                </div>
+                
+                <div className={`absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-transparent via-${colors[stage].replace('text-', '')} to-transparent opacity-20`} />
+            </div>
+        );
+      }
+
+      const CaseCard = ({ 
+        data, 
+        onClick,
+        favoriteAlg,
+        isLearned
+      }) => {
+        // Calculate setup alg (inverse) for the thumbnail.
+        const setupAlg = useMemo(() => {
+          try {
+            let setup = "";
+            const rotation = 'x2 ';
+            const algString = favoriteAlg || (data.algs.length > 0 ? data.algs[0] : "");
+            if (algString) {
+              setup = new Alg(algString).invert().toString();
+            }
+            return rotation + setup;
+          } catch (e) {
+            return "";
+          }
+        }, [data.algs, favoriteAlg]);
+
+        const vizType = data.stage === 'F2L' ? '3D' : '2D';
+
+        return (
+          <button 
+            onClick={() => onClick(data)}
+            className={`group flex flex-col bg-gray-900 border hover:border-indigo-500/50 rounded-xl overflow-hidden transition-all hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 text-left h-full relative ${isLearned ? 'border-green-500/30' : 'border-gray-800'}`}
+          >
+            {isLearned && (
+              <div className="absolute top-3 left-3 z-10 bg-green-500 text-white p-1 rounded-full shadow-lg shadow-green-900/50">
+                  <Check size={10} strokeWidth={4} />
+              </div>
+            )}
+            
+            {favoriteAlg && (
+              <div className="absolute top-3 right-3 z-10 bg-gray-950/80 text-yellow-400 p-1.5 rounded-full backdrop-blur-sm shadow-sm border border-yellow-500/20">
+                  <Star size={12} fill="currentColor" />
+              </div>
+            )}
+
+            <div className="w-full bg-gray-950/30 relative p-6 flex items-center justify-center border-b border-gray-800/50 min-h-[12rem]">
+              <div className="w-24 h-24 sm:w-32 sm:h-32">
+                  <twisty-player
+                    experimental-setup-alg={setupAlg}
+                    visualization={vizType}
+                    background="none"
+                    control-panel="none"
+                    camera-distance="6"
+                    className="w-full h-full pointer-events-none"
+                  ></twisty-player>
+              </div>
+              <div className="absolute inset-0 bg-indigo-500/0 group-hover:bg-indigo-500/5 transition-colors" />
+            </div>
+
+            <div className="px-5 py-4 bg-gray-900 flex-1 flex flex-col gap-1">
+              <div className="flex justify-between items-center w-full">
+                  <span className={`font-mono text-[11px] font-bold uppercase ${isLearned ? 'text-green-400' : 'text-indigo-400'}`}>{data.id}</span>
+                  <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">{data.stage}</span>
+              </div>
+              <h3 className="text-sm font-semibold text-gray-200 group-hover:text-white truncate w-full" title={data.name}>
+                  {data.name}
+              </h3>
+              
+              {favoriteAlg && (
+                  <div className="mt-3 pt-3 border-t border-gray-800/80 w-full">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1.5 flex items-center gap-1">
+                          <Star size={10} className="text-yellow-500 fill-yellow-500" /> Saved Algorithm
+                      </p>
+                      <p className="font-mono text-[11px] leading-normal text-yellow-100/90 break-words">
+                          {favoriteAlg}
+                      </p>
+                  </div>
+              )}
+            </div>
+          </button>
+        );
+      };
+
+      function App() {
+        // -- State --
+        const [viewMode, setViewMode] = useState('grid');
+        const [selectedStage, setSelectedStage] = useState('F2L');
+        const [searchQuery, setSearchQuery] = useState("");
+        
+        // User Data Persistence
+        const [userData, setUserData] = useState(() => {
+            try {
+                const stored = localStorage.getItem('algcubing_data');
+                const parsed = stored ? JSON.parse(stored) : { favorites: {}, customAlgs: {}, learned: [] };
+                // Migration for old data
+                if (!parsed.learned) parsed.learned = [];
+                return parsed;
+            } catch {
+                return { favorites: {}, customAlgs: {}, learned: [] };
+            }
+        });
+
+        // Focus Mode State
+        const [selectedCase, setSelectedCase] = useState(null);
+        const [selectedAlgIndex, setSelectedAlgIndex] = useState(0);
+        const [activeTab, setActiveTab] = useState('practice');
+        const [isAddingAlg, setIsAddingAlg] = useState(false);
+        const [newAlgText, setNewAlgText] = useState("");
+        
+        // Trainer Mode State
+        const [isTrainerMode, setIsTrainerMode] = useState(false);
+        const [isRevealed, setIsRevealed] = useState(false);
+
+        // Player State
+        const [algInput, setAlgInput] = useState("");
+        const [setupInput, setSetupInput] = useState("");
+        const [tempo, setTempo] = useState(2.5);
+        const [isCopied, setIsCopied] = useState(false);
+        
+        const playerRef = useRef(null);
+
+        // -- Effects --
+
+        // Persist User Data
+        useEffect(() => {
+            localStorage.setItem('algcubing_data', JSON.stringify(userData));
+        }, [userData]);
+
+        // Computed list of algs for current case
+        const mergedAlgs = useMemo(() => {
+            if (!selectedCase) return [];
+            const custom = userData.customAlgs[selectedCase.id] || [];
+            const base = [...selectedCase.algs, ...custom];
+            const fav = userData.favorites[selectedCase.id];
+            if (fav && !base.includes(fav)) {
+                return [...base, fav];
+            }
+            return base;
+        }, [selectedCase, userData.customAlgs, userData.favorites]);
+
+        // Calculate setup alg when case or selected index changes
+        useEffect(() => {
+          if (selectedCase && mergedAlgs.length > 0) {
+              const safeIndex = Math.min(selectedAlgIndex, mergedAlgs.length - 1);
+              if (safeIndex !== selectedAlgIndex && safeIndex >= 0) {
+                  setSelectedAlgIndex(safeIndex);
+                  return;
+              }
+
+              const currentAlg = mergedAlgs[safeIndex] || mergedAlgs[0];
+              setAlgInput(currentAlg);
+              setIsRevealed(false);
+              
+              try {
+                  const alg = new Alg(currentAlg);
+                  const inverse = alg.invert();
+                  const rotation = 'x2 ';
+                  setSetupInput(rotation + inverse.toString());
+                  
+                  if (playerRef.current) {
+                    playerRef.current.timestamp = 0;
+                  }
+              } catch (e) {
+                  console.error("Error calculating inverse", e);
+              }
+          }
+        }, [selectedCase, selectedAlgIndex, mergedAlgs]);
+
+        // -- Handlers --
+
+        const handleSelectCase = (c) => {
+          setSelectedCase(c);
+          
+          let allAlgs = [...c.algs, ...(userData.customAlgs[c.id] || [])];
+          const fav = userData.favorites[c.id];
+          if (fav && !allAlgs.includes(fav)) {
+              allAlgs.push(fav);
+          }
+
+          const favIndex = fav ? allAlgs.indexOf(fav) : 0;
+          setSelectedAlgIndex(favIndex !== -1 ? favIndex : 0);
+          setViewMode('focus');
+          setIsAddingAlg(false);
+          setIsRevealed(false);
+        };
+
+        const handleUpdateAlg = (alg) => {
+          if (!selectedCase) return;
+          const index = mergedAlgs.indexOf(alg);
+          if (index !== -1) {
+            setSelectedAlgIndex(index);
+          } else {
+            setAlgInput(alg);
+          }
+        };
+
+        const handleBackToGrid = () => {
+          setViewMode('grid');
+          setSelectedCase(null);
+        };
+
+        const handleCopy = () => {
+          navigator.clipboard.writeText(algInput);
+          setIsCopied(true);
+          setTimeout(() => setIsCopied(false), 2000);
+        };
+
+        const toggleFavorite = () => {
+            if (!selectedCase) return;
+            const currentAlg = mergedAlgs[selectedAlgIndex];
+            setUserData(prev => {
+                const isFav = prev.favorites[selectedCase.id] === currentAlg;
+                const newFavs = { ...prev.favorites };
+                if (isFav) {
+                    delete newFavs[selectedCase.id];
+                } else {
+                    newFavs[selectedCase.id] = currentAlg;
+                }
+                return { ...prev, favorites: newFavs };
+            });
+        };
+
+        const toggleLearned = () => {
+            if (!selectedCase) return;
+            setUserData(prev => {
+                const isLearned = prev.learned.includes(selectedCase.id);
+                return {
+                    ...prev,
+                    learned: isLearned 
+                      ? prev.learned.filter(id => id !== selectedCase.id)
+                      : [...prev.learned, selectedCase.id]
+                };
+            });
+        };
+
+        const saveNewAlg = () => {
+            if (!selectedCase || !newAlgText.trim()) return;
+            setUserData(prev => ({
+                ...prev,
+                customAlgs: {
+                    ...prev.customAlgs,
+                    [selectedCase.id]: [...(prev.customAlgs[selectedCase.id] || []), newAlgText.trim()]
+                }
+            }));
+            const newLength = mergedAlgs.length + 1; 
+            setSelectedAlgIndex(newLength - 1);
+            setNewAlgText("");
+            setIsAddingAlg(false);
+        };
+
+        const deleteCurrentAlg = () => {
+            if (!selectedCase) return;
+            const currentAlg = mergedAlgs[selectedAlgIndex];
+            // Only delete if it's a custom alg (index >= base algs length)
+            if (selectedAlgIndex < selectedCase.algs.length) {
+              alert("Cannot delete standard algorithms.");
+              return;
+            }
+            
+            setUserData(prev => {
+                const newCustomList = (prev.customAlgs[selectedCase.id] || []).filter(a => a !== currentAlg);
+                const newFavorites = { ...prev.favorites };
+                if (newFavorites[selectedCase.id] === currentAlg) {
+                  delete newFavorites[selectedCase.id];
+                }
+                return {
+                    ...prev,
+                    customAlgs: {
+                        ...prev.customAlgs,
+                        [selectedCase.id]: newCustomList
+                    },
+                    favorites: newFavorites
+                };
+            });
+            setSelectedAlgIndex(0);
+        };
+
+        const handleRandomCase = () => {
+          const candidates = filteredCases;
+          if (candidates.length === 0) return;
+          let nextCase = candidates[Math.floor(Math.random() * candidates.length)];
+          if (candidates.length > 1 && selectedCase) {
+              while (nextCase.id === selectedCase.id) {
+                  nextCase = candidates[Math.floor(Math.random() * candidates.length)];
+              }
+          }
+          handleSelectCase(nextCase);
+        };
+
+        // Playback Control for Voice Integration
+        const handleVoicePlayback = () => {
+            if (playerRef.current) {
+                const player = playerRef.current;
+                player.timestamp = 0;
+                player.tempo = 1.5; // Slower tempo for tutorial
+                player.play();
+            }
+        };
+
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (viewMode === 'focus' && isTrainerMode) {
+              if (e.code === 'Space') {
+                e.preventDefault(); 
+                handleRandomCase();
+              }
+            }
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+        }, [viewMode, isTrainerMode, selectedCase]);
+
+        // -- Filtering & Stats --
+        const filteredCases = CFOP_ALGORITHMS.filter(c => {
+          const matchesStage = c.stage === selectedStage;
+          const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                c.id.toLowerCase().includes(searchQuery.toLowerCase());
+          return matchesStage && matchesSearch;
+        });
+
+        const getStageStats = (stage) => {
+            const cases = CFOP_ALGORITHMS.filter(c => c.stage === stage);
+            const learnedCount = cases.filter(c => userData.learned.includes(c.id)).length;
+            return { total: cases.length, learned: learnedCount };
+        };
+
+        const isCurrentFavorite = selectedCase && userData.favorites[selectedCase.id] === mergedAlgs[selectedAlgIndex];
+        const isCurrentCustom = selectedCase && selectedAlgIndex >= selectedCase.algs.length;
+        const isCurrentLearned = selectedCase && userData.learned.includes(selectedCase.id);
+
+        return (
+          <div className="flex h-screen h-dvh bg-gray-950 text-gray-100 font-sans overflow-hidden selection:bg-indigo-500/30">
+            
+            {/* --- LEFT NAV (Slim) --- */}
+            <nav className="w-20 bg-gray-900 border-r border-white/5 flex flex-col items-center py-6 z-20 shrink-0">
+              <div className="mb-8 text-indigo-500">
+                <Box size={32} strokeWidth={2} />
+              </div>
+              <div className="flex flex-col w-full gap-4 px-2">
+                {['F2L', 'OLL', 'PLL'].map((stage) => (
+                  <button
+                    key={stage}
+                    onClick={() => {
+                      setSelectedStage(stage);
+                      setViewMode('grid');
+                    }}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 group ${
+                      selectedStage === stage 
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 translate-x-1' 
+                      : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300'
+                    }`}
+                  >
+                    <div className={`text-[10px] font-bold tracking-widest mb-1 ${selectedStage === stage ? 'text-indigo-200' : 'text-gray-600 group-hover:text-gray-500'}`}>
+                      STAGE
+                    </div>
+                    <span className="font-black text-sm">{stage}</span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+
+            {/* --- MAIN CONTENT AREA --- */}
+            <main className="flex-1 flex flex-col relative overflow-hidden">
+              
+              {/* Top Bar */}
+              <header className="h-16 bg-gray-900/50 border-b border-white/5 backdrop-blur-md flex items-center justify-between px-8 z-10 shrink-0">
+                <div className="flex items-center gap-4">
+                  {viewMode === 'focus' && (
+                    <button 
+                      onClick={handleBackToGrid}
+                      className="p-2 -ml-2 mr-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all flex items-center gap-2 text-sm font-medium"
+                    >
+                      <ChevronLeft size={18} />
+                      <span className="hidden sm:inline">Library</span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-gray-500 truncate">
+                    <span className="text-gray-400 font-medium">{selectedStage}</span>
+                    {selectedCase && (
+                      <>
+                        <ArrowRight size={14} />
+                        <span className="text-indigo-400 font-medium truncate">{selectedCase.name}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {viewMode === 'grid' && (
+                  <div className="relative w-48 sm:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input 
+                      type="text" 
+                      placeholder={`Search ${selectedStage}...`}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-gray-950 border border-white/10 rounded-full pl-10 pr-4 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-all"
+                    />
+                  </div>
+                )}
+              </header>
+
+              {/* Viewport Content */}
+              <div className="flex-1 overflow-hidden relative">
+                
+                {/* GRID VIEW */}
+                {viewMode === 'grid' && (
+                  <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
+                    <div className="max-w-[1600px] mx-auto space-y-10">
+                      
+                      {/* Dashboard */}
+                      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {['F2L', 'OLL', 'PLL'].map(stage => {
+                              const stats = getStageStats(stage);
+                              return <ProgressCard key={stage} stage={stage} total={stats.total} learned={stats.learned} />
+                          })}
+                      </section>
+
+                      <div>
+                          <div className="flex items-center gap-3 mb-6">
+                          <Grid3X3 className="text-indigo-500" />
+                          <h2 className="text-2xl font-bold text-white">
+                              {selectedStage} Cases
+                              <span className="ml-3 text-sm font-normal text-gray-500 bg-gray-900 px-2 py-1 rounded-md border border-white/5">
+                              {filteredCases.length} Algorithms
+                              </span>
+                          </h2>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
+                          {filteredCases.map((c) => (
+                              <CaseCard 
+                                  key={c.id} 
+                                  data={c} 
+                                  onClick={handleSelectCase} 
+                                  favoriteAlg={userData.favorites[c.id]}
+                                  isLearned={userData.learned.includes(c.id)}
+                              />
+                          ))}
+                          </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* FOCUS VIEW */}
+                {viewMode === 'focus' && selectedCase && (
+                  <div className="absolute inset-0 flex flex-col lg:flex-row h-full">
+                    
+                    {/* Stage (3D Cube) */}
+                    {/* Responsive: 40% height on mobile, flex-1 on desktop */}
+                    <div className="w-full h-[40%] lg:h-full lg:flex-1 bg-gradient-to-b from-gray-900 to-gray-950 relative flex flex-col items-center justify-center group/stage order-1">
+                      <twisty-player
+                        ref={playerRef}
+                        alg={algInput}
+                        experimental-setup-alg={setupInput}
+                        visualization="3D"
+                        background="none"
+                        control-panel="bottom-row"
+                        tempo={tempo}
+                        camera-latitude={35}
+                        camera-longitude={30}
+                        camera-distance={5.5}
+                        className="w-full h-full max-h-[70vh]"
+                      ></twisty-player>
+
+                      {isTrainerMode && (
+                          <div className="absolute bottom-8 left-8 flex gap-2 animate-in fade-in slide-in-from-bottom-2 z-10">
+                              <button 
+                                  onClick={handleRandomCase}
+                                  className="bg-gray-800/80 backdrop-blur text-white border border-white/10 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-600 hover:border-indigo-500 transition-all flex items-center gap-2 shadow-xl"
+                              >
+                                  <Shuffle size={16} />
+                                  Next Scramble <span className="text-[10px] opacity-50 bg-black/30 px-1.5 rounded ml-1 hidden sm:inline">SPACE</span>
+                              </button>
+                          </div>
+                      )}
+                    </div>
+
+                    {/* Right Panel (Controls & Coach) */}
+                    {/* Responsive: 60% height on mobile, w-96 on desktop */}
+                    <div className="w-full h-[60%] lg:h-full lg:w-96 bg-gray-900 border-l border-white/5 flex flex-col z-20 shadow-xl order-2">
+                      
+                      <div className="flex border-b border-white/5 shrink-0">
+                        <button 
+                          onClick={() => setActiveTab('practice')}
+                          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${
+                            activeTab === 'practice' 
+                            ? 'border-indigo-500 text-white bg-white/5' 
+                            : 'border-transparent text-gray-500 hover:text-gray-300'
+                          }`}
+                        >
+                          <Zap size={16} /> Practice
+                        </button>
+                        <button 
+                          onClick={() => setActiveTab('coach')}
+                          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${
+                            activeTab === 'coach' 
+                            ? 'border-purple-500 text-white bg-white/5' 
+                            : 'border-transparent text-gray-500 hover:text-gray-300'
+                          }`}
+                        >
+                          <BrainCircuit size={16} /> AI Coach
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+                        <div className={activeTab === 'practice' ? 'block space-y-8' : 'hidden'}>
+                            <div className="space-y-3">
+                              
+                              <div className="flex flex-col gap-3">
+                                  <div className="flex justify-between items-end">
+                                      <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Algorithm</label>
+                                      
+                                      <div className="flex items-center gap-1">
+                                          <button
+                                              onClick={() => setIsTrainerMode(!isTrainerMode)}
+                                              className={`p-1.5 rounded mr-2 transition-all flex items-center gap-1 ${
+                                                  isTrainerMode 
+                                                  ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/50' 
+                                                  : 'hover:bg-white/5 text-gray-500 hover:text-gray-300'
+                                              }`}
+                                              title="Toggle Trainer Mode"
+                                          >
+                                              {isTrainerMode ? <EyeOff size={16} /> : <Eye size={16} />}
+                                          </button>
+                                          
+                                          <div className="w-px h-4 bg-gray-800 mx-1"></div>
+
+                                          <button 
+                                              onClick={toggleLearned}
+                                              className={`p-1.5 rounded hover:bg-white/5 transition-all ${isCurrentLearned ? 'bg-green-500/20 text-green-400' : 'text-gray-600 hover:text-green-400'}`}
+                                              title={isCurrentLearned ? "Unmark Learned" : "Mark as Learned"}
+                                          >
+                                              <GraduationCap size={18} />
+                                          </button>
+
+                                          <button 
+                                              onClick={toggleFavorite}
+                                              className={`p-1.5 rounded hover:bg-white/5 transition-all ${isCurrentFavorite ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-200'}`}
+                                              title="Favorite"
+                                          >
+                                              <Star size={16} fill={isCurrentFavorite ? "currentColor" : "none"} />
+                                          </button>
+
+                                          <button onClick={handleCopy} className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors">
+                                              {isCopied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                                          </button>
+                                      </div>
+                                  </div>
+
+                                  {!isAddingAlg ? (
+                                      <div className="flex gap-2">
+                                          <select 
+                                              value={selectedAlgIndex}
+                                              onChange={(e) => {
+                                                  const val = e.target.value;
+                                                  if (val === 'add_new') {
+                                                      setIsAddingAlg(true);
+                                                  } else {
+                                                      setSelectedAlgIndex(Number(val));
+                                                  }
+                                              }}
+                                              className="flex-1 bg-gray-800 text-sm text-white rounded-lg px-3 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500 cursor-pointer w-0 min-w-0"
+                                          >
+                                              {mergedAlgs.map((alg, idx) => (
+                                                  <option key={idx} value={idx} title={alg}>
+                                                      {idx + 1}. {alg} 
+                                                      {idx >= selectedCase.algs.length ? ' (Custom)' : ''}
+                                                      {userData.favorites[selectedCase.id] === alg ? ' ★' : ''}
+                                                  </option>
+                                              ))}
+                                              <option disabled>──────────</option>
+                                              <option value="add_new">+ Add New Algorithm</option>
+                                          </select>
+                                          
+                                          {isCurrentCustom && (
+                                            <button 
+                                              onClick={deleteCurrentAlg}
+                                              className="px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-red-400 transition-colors"
+                                              title="Delete Custom Algorithm"
+                                            >
+                                              <Trash2 size={18} />
+                                            </button>
+                                          )}
+
+                                          <button 
+                                              onClick={() => setIsAddingAlg(true)}
+                                              className="px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"
+                                          >
+                                              <Plus size={18} />
+                                          </button>
+                                      </div>
+                                  ) : (
+                                      <div className="bg-gray-800/50 p-3 rounded-xl border border-indigo-500/30 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                          <label className="text-xs text-indigo-300 font-medium">New Custom Algorithm</label>
+                                          <textarea 
+                                              value={newAlgText}
+                                              onChange={(e) => setNewAlgText(e.target.value)}
+                                              placeholder="R U R' U'..."
+                                              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm font-mono focus:outline-none focus:border-indigo-500 h-20 resize-none"
+                                              autoFocus
+                                          />
+                                          <div className="flex gap-2 justify-end">
+                                              <button 
+                                                  onClick={() => setIsAddingAlg(false)}
+                                                  className="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-lg flex items-center gap-1"
+                                              >
+                                                  Cancel
+                                              </button>
+                                              <button 
+                                                  onClick={saveNewAlg}
+                                                  disabled={!newAlgText.trim()}
+                                                  className="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-1 shadow-lg shadow-indigo-900/20"
+                                              >
+                                                  <Save size={14} /> Save
+                                              </button>
+                                          </div>
+                                      </div>
+                                  )}
+                              </div>
+
+                              <div className="relative">
+                                  <textarea 
+                                    value={algInput}
+                                    onChange={(e) => setAlgInput(e.target.value)}
+                                    className={`w-full bg-gray-950/50 border border-gray-800 rounded-xl p-4 font-mono text-lg leading-relaxed text-indigo-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all resize-none shadow-inner h-32 ${isTrainerMode && !isRevealed ? 'blur-md opacity-20 select-none' : ''}`}
+                                    spellCheck={false}
+                                    readOnly={!isCurrentCustom && !isAddingAlg}
+                                  />
+                                  {isTrainerMode && !isRevealed && (
+                                      <div className="absolute inset-0 flex items-center justify-center">
+                                          <button 
+                                              onClick={() => setIsRevealed(true)}
+                                              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-full shadow-lg transform transition hover:scale-105 flex items-center gap-2"
+                                          >
+                                              <Eye size={18} /> Reveal Algorithm
+                                          </button>
+                                      </div>
+                                  )}
+                              </div>
+                              {isCurrentCustom && <p className="text-[10px] text-gray-500 text-right italic">Custom algorithm</p>}
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                  <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Scramble / Setup</label>
+                                  <button 
+                                    onClick={() => {
+                                      if(playerRef.current) playerRef.current.timestamp = 0;
+                                    }} 
+                                    className="text-xs flex items-center gap-1 text-gray-500 hover:text-white transition-colors"
+                                  >
+                                    <RotateCcw size={12} /> Reset
+                                  </button>
+                              </div>
+                              <div className="bg-gray-950/30 border border-white/5 rounded-lg p-3 font-mono text-xs text-orange-300/80 break-words">
+                                  {setupInput || "No setup moves"}
+                              </div>
+                            </div>
+
+                            <div className="bg-gray-800/30 rounded-xl p-4 border border-white/5 space-y-4">
+                              <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-gray-400">
+                                    <Settings size={14} />
+                                    <span className="text-xs font-medium">Speed</span>
+                                  </div>
+                                  <span className="text-xs font-mono text-indigo-400">{tempo}x</span>
+                              </div>
+                              <input 
+                                  type="range" 
+                                  min="0.5" 
+                                  max="6" 
+                                  step="0.1"
+                                  value={tempo} 
+                                  onChange={(e) => setTempo(Number(e.target.value))}
+                                  className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                            </div>
+                        </div>
+
+                        <div className={activeTab === 'coach' ? 'block h-full flex flex-col' : 'hidden'}>
+                            <GeminiAnalysis 
+                              alg={algInput} 
+                              stage={selectedStage}
+                              caseName={selectedCase.name}
+                              userFavorites={userData.favorites}
+                              allCases={CFOP_ALGORITHMS}
+                              onSelectCase={handleSelectCase}
+                              currentCaseId={selectedCase?.id}
+                              onSelectAlg={handleUpdateAlg}
+                              onTriggerPlayback={handleVoicePlayback}
+                            />
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </main>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      );
+    </script>
+  </body>
+</html>
